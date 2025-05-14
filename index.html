@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>縞々スネークゲーム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Press Start 2P', cursive;
+            background-color: #1a202c; /* bg-gray-900 */
+            color: #e2e8f0; /* text-gray-200 */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 1rem;
+            overflow: hidden; /* ページ全体のスクロールを防ぐ */
+        }
+        .game-container {
+            background-color: #2d3748; /* bg-gray-800 */
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            text-align: center;
+        }
+        canvas {
+            background-color: #4a5568; /* bg-gray-700 */
+            border: 2px solid #718096; /* border-gray-500 */
+            border-radius: 0.375rem;
+            display: block; /* 中央揃えのため */
+            margin: 0 auto; /* 中央揃えのため */
+            max-width: 100%; /* レスポンシブ対応 */
+            height: auto; /* アスペクト比維持 */
+        }
+        .score-board {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            color: #a0aec0; /* text-gray-400 */
+        }
+        .controls button {
+            font-family: 'Press Start 2P', cursive;
+            background-color: #4299e1; /* bg-blue-500 */
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            margin: 0.5rem;
+            border-radius: 0.375rem;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .controls button:hover {
+            background-color: #3182ce; /* bg-blue-600 */
+        }
+        .controls button:active {
+            background-color: #2b6cb0; /* bg-blue-700 */
+            transform: translateY(1px);
+        }
+        .message-box {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(45, 55, 72, 0.95); /* bg-gray-800 with opacity */
+            color: #e2e8f0; /* text-gray-200 */
+            padding: 2rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            z-index: 100;
+            text-align: center;
+            display: none; /* 初期状態では非表示 */
+        }
+        .message-box h2 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+        .message-box p {
+            font-size: 1.2rem;
+            margin-bottom: 1.5rem;
+        }
+        .message-box button {
+            font-family: 'Press Start 2P', cursive;
+            background-color: #68d391; /* bg-green-400 */
+            color: #1a202c; /* text-gray-900 */
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.375rem;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .message-box button:hover {
+            background-color: #48bb78; /* bg-green-500 */
+        }
+        /* スマートフォン向けのボタン配置調整 */
+        @media (max-width: 640px) {
+            .controls {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 0.5rem;
+                width: 100%;
+                max-width: 300px; /* ボタンエリアの最大幅 */
+                margin: 1rem auto 0;
+            }
+            .controls .up { grid-column: 2 / 3; }
+            .controls .left { grid-column: 1 / 2; grid-row: 2 / 3; }
+            .controls .down { grid-column: 2 / 3; grid-row: 2 / 3; }
+            .controls .right { grid-column: 3 / 4; grid-row: 2 / 3; }
+            .game-container {
+                padding: 1rem;
+            }
+            .score-board {
+                font-size: 1.2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="score-board">スコア: <span id="score">0</span></div>
+        <canvas id="gameCanvas"></canvas>
+        <div class="controls mt-4">
+            <button id="upBtn" class="up">↑</button>
+            <button id="leftBtn" class="left">←</button>
+            <button id="downBtn" class="down">↓</button>
+            <button id="rightBtn" class="right">→</button>
+        </div>
+    </div>
+
+    <div id="messageBox" class="message-box">
+        <h2 id="messageTitle"></h2>
+        <p id="messageText"></p>
+        <button id="restartButton">リスタート</button>
+    </div>
+
+    <script>
+        // Canvas要素と2Dコンテキストを取得
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // スコア表示要素を取得
+        const scoreDisplay = document.getElementById('score');
+
+        // メッセージボックス要素
+        const messageBox = document.getElementById('messageBox');
+        const messageTitle = document.getElementById('messageTitle');
+        const messageText = document.getElementById('messageText');
+        const restartButton = document.getElementById('restartButton');
+
+        // ゲーム設定
+        const gridSize = 20; // グリッドの1マスのサイズ
+        let tileCountX, tileCountY; // グリッドの数（動的に設定）
+        let canvasWidth, canvasHeight;
+
+        // 蛇の初期設定
+        let snake = [{ x: 10, y: 10 }]; // 蛇の体の各部分の座標
+        const snakeColor1 = '#48bb78'; // 蛇の色1 (緑系)
+        const snakeColor2 = '#38a169'; // 蛇の色2 (濃い緑系)
+
+        // 蛇の進行方向
+        let velocityX = 0;
+        let velocityY = 0;
+
+        // 餌の初期設定
+        let food = { x: 15, y: 15, color: '#f56565' }; // 餌の座標と色 (赤系)
+
+        // スコア
+        let score = 0;
+
+        // ゲームループのID
+        let gameLoopTimeout;
+        let gameSpeed = 150; // ゲームの速度 (ミリ秒)
+
+        // ゲームオーバーフラグ
+        let gameOver = false;
+
+        // Canvasのサイズをコンテナに合わせて設定する関数
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            const maxWidth = container.clientWidth - (parseFloat(getComputedStyle(container).paddingLeft) + parseFloat(getComputedStyle(container).paddingRight));
+            const availableHeight = window.innerHeight * 0.6; // 画面高さの60%程度を上限とする
+
+            // グリッドサイズに基づいてキャンバスサイズを調整
+            const potentialWidth = Math.floor(maxWidth / gridSize) * gridSize;
+            const potentialHeight = Math.floor(availableHeight / gridSize) * gridSize;
+
+            canvasWidth = Math.min(potentialWidth, 600); // 最大幅も考慮
+            canvasHeight = Math.min(potentialHeight, 400); // 最大高さも考慮
+
+            if (canvasWidth < gridSize * 10) canvasWidth = gridSize * 10; // 最低限の幅
+            if (canvasHeight < gridSize * 10) canvasHeight = gridSize * 10; // 最低限の高さ
+
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
+
+            tileCountX = canvas.width / gridSize;
+            tileCountY = canvas.height / gridSize;
+        }
+
+
+        // ゲームの初期化関数
+        function initializeGame() {
+            gameOver = false;
+            snake = [{ x: Math.floor(tileCountX / 4), y: Math.floor(tileCountY / 2) }];
+            velocityX = 1; // 最初は右に移動
+            velocityY = 0;
+            score = 0;
+            scoreDisplay.textContent = score;
+            placeFood();
+            hideMessage();
+            if (gameLoopTimeout) clearTimeout(gameLoopTimeout);
+            gameLoop();
+        }
+
+        // 餌をランダムな位置に配置する関数
+        function placeFood() {
+            food.x = Math.floor(Math.random() * tileCountX);
+            food.y = Math.floor(Math.random() * tileCountY);
+
+            // 蛇の体と重ならないようにする
+            for (let segment of snake) {
+                if (segment.x === food.x && segment.y === food.y) {
+                    placeFood(); // 再帰的に配置し直し
+                    return;
+                }
+            }
+        }
+
+        // ゲームの描画関数
+        function drawGame() {
+            // 背景をクリア
+            ctx.fillStyle = '#4a5568'; // bg-gray-700
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 餌を描画
+            ctx.fillStyle = food.color;
+            ctx.fillRect(food.x * gridSize, food.y * gridSize, gridSize -1 , gridSize -1); // 枠線が見えるように少し小さく
+
+            // 蛇を描画 (縞々模様)
+            snake.forEach((segment, index) => {
+                ctx.fillStyle = (index % 2 === 0) ? snakeColor1 : snakeColor2;
+                ctx.fillRect(segment.x * gridSize, segment.y * gridSize, gridSize -1, gridSize -1);
+            });
+        }
+
+        // ゲームの状態を更新する関数
+        function updateGame() {
+            if (gameOver) return;
+
+            // 蛇の頭を現在の進行方向に移動
+            const head = { x: snake[0].x + velocityX, y: snake[0].y + velocityY };
+
+            // 壁との衝突判定
+            if (head.x < 0 || head.x >= tileCountX || head.y < 0 || head.y >= tileCountY) {
+                triggerGameOver("壁に激突！");
+                return;
+            }
+
+            // 自分自身との衝突判定
+            for (let i = 1; i < snake.length; i++) {
+                if (head.x === snake[i].x && head.y === snake[i].y) {
+                    triggerGameOver("自分にぶつかった！");
+                    return;
+                }
+            }
+
+            // 新しい頭を蛇の先頭に追加
+            snake.unshift(head);
+
+            // 餌を食べたかの判定
+            if (head.x === food.x && head.y === food.y) {
+                score++;
+                scoreDisplay.textContent = score;
+                placeFood();
+                // スピードアップ（任意）
+                if (score % 5 === 0 && gameSpeed > 50) {
+                    gameSpeed -= 10;
+                }
+            } else {
+                // 餌を食べていなければ、蛇の尾を削除（成長しない）
+                snake.pop();
+            }
+        }
+
+        // ゲームオーバー処理
+        function triggerGameOver(reason) {
+            gameOver = true;
+            clearTimeout(gameLoopTimeout);
+            showMessage("ゲームオーバー！", `${reason}\nスコア: ${score}`);
+        }
+
+        // メッセージ表示
+        function showMessage(title, text) {
+            messageTitle.textContent = title;
+            messageText.textContent = text;
+            messageBox.style.display = 'block';
+        }
+
+        // メッセージ非表示
+        function hideMessage() {
+            messageBox.style.display = 'none';
+        }
+
+
+        // ゲームループ
+        function gameLoop() {
+            if (gameOver) return;
+            updateGame();
+            drawGame();
+            gameLoopTimeout = setTimeout(gameLoop, gameSpeed);
+        }
+
+        // キーボード入力の処理
+        document.addEventListener('keydown', (event) => {
+            // ゲームオーバー中は操作を無視
+            if (gameOver && event.key !== "Enter" && event.key !== " ") return;
+             if (gameOver && (event.key === "Enter" || event.key === " ")) {
+                resizeCanvas();
+                initializeGame();
+                return;
+            }
+
+
+            switch (event.key) {
+                case 'ArrowUp':
+                case 'w':
+                case 'W':
+                    if (velocityY === 0) { // 現在上下に移動中でない場合のみ
+                        velocityX = 0;
+                        velocityY = -1;
+                    }
+                    break;
+                case 'ArrowDown':
+                case 's':
+                case 'S':
+                    if (velocityY === 0) {
+                        velocityX = 0;
+                        velocityY = 1;
+                    }
+                    break;
+                case 'ArrowLeft':
+                case 'a':
+                case 'A':
+                    if (velocityX === 0) { // 現在左右に移動中でない場合のみ
+                        velocityX = -1;
+                        velocityY = 0;
+                    }
+                    break;
+                case 'ArrowRight':
+                case 'd':
+                case 'D':
+                    if (velocityX === 0) {
+                        velocityX = 1;
+                        velocityY = 0;
+                    }
+                    break;
+            }
+        });
+
+        // ボタン入力の処理
+        document.getElementById('upBtn').addEventListener('click', () => {
+            if (velocityY === 0 && !gameOver) { velocityX = 0; velocityY = -1; }
+        });
+        document.getElementById('downBtn').addEventListener('click', () => {
+            if (velocityY === 0 && !gameOver) { velocityX = 0; velocityY = 1; }
+        });
+        document.getElementById('leftBtn').addEventListener('click', () => {
+            if (velocityX === 0 && !gameOver) { velocityX = -1; velocityY = 0; }
+        });
+        document.getElementById('rightBtn').addEventListener('click', () => {
+            if (velocityX === 0 && !gameOver) { velocityX = 1; velocityY = 0; }
+        });
+
+        restartButton.addEventListener('click', () => {
+            resizeCanvas(); // リスタート時にもCanvasサイズを再計算
+            initializeGame();
+        });
+
+
+        // ウィンドウリサイズ時の処理
+        window.addEventListener('resize', () => {
+            // ゲームオーバーでなければ、リサイズ後にゲームを再初期化
+            // 実行中の場合、一時停止してリサイズ後に再開するなどの処理も考えられるが、
+            // ここではシンプルに再初期化する。
+            const wasGameOver = gameOver;
+            triggerGameOver("画面サイズが変更されました。"); // 一旦ゲームオーバーにする
+            showMessage("リサイズ", "画面サイズが変更されました。リスタートしてください。");
+            // ユーザーがリスタートボタンを押すまで待つ
+        });
+
+
+        // ゲーム開始
+        resizeCanvas(); // 初期ロード時にCanvasサイズを設定
+        initializeGame();
+
+    </script>
+</body>
+</html>
